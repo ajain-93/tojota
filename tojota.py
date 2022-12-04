@@ -389,6 +389,58 @@ def insert_into_mqtt(myt, measurement, value):
     return
 
 
+def register_onto_mqtt(myt, vehicleMetaData, measurement, value_template=None):
+    """
+    Insert data into influxdb (without authentication)
+    :param measurement: Measurement name
+    :param value: Measurement value
+    :return: null
+    """
+    vin = myt.config_data['vin']
+    topic = f"homeassistant/sensor/{vin}/{measurement}/config"
+
+    match measurement:
+        case "numberplate":
+            icon = "car"
+            unit_of_measurement = ""
+        case "odometer":
+            icon = "counter"
+            unit_of_measurement = "km"
+        case "fuel_tank":
+            icon = "gas-station"
+            unit_of_measurement = "%"
+        case "location":
+            icon = "map-marker"
+            unit_of_measurement = ""
+        case _:
+            icon = "car"
+            unit_of_measurement = ""
+
+    data = {
+        "device":{
+            "identifiers": vin,
+            "manufacturer":"Toyota",
+            "model": "{} {}".format(
+                vehicleMetaData['modelName'],
+                "Hybrid" if vehicleMetaData['hybrid'] else vehicleMetaData['transmission']),
+            "name": vehicleMetaData['licensePlate']
+            },
+        "unique_id":f"{vin}_{measurement}",
+        "json_attributes_topic":f"toyota/{vin}/{measurement}",
+        "state_topic":f"toyota/{vin}/{measurement}",
+        "value_template": "{{ " + ("value" if value_template==None else "value_json." + value_template) + " }}",
+        "name": "{} {}".format(vehicleMetaData['licensePlate'], measurement.replace("_", " ").title()),
+        "icon": f"mdi:{icon}",
+        "unit_of_measurement": unit_of_measurement
+    }
+
+    mqttClient = mqtt.Client('python_tojota')
+    mqttClient.connect(MQTT_URL)
+    mqttClient.publish(topic, json.dumps(data), qos=1, retain=True)
+    mqttClient.disconnect()
+    return
+
+
 def remote_control_to_db(myt, fresh, charge_info, hvac_info):
     if fresh and myt.config_data['use_influxdb']:
         log.debug('Saving remote control data to influxdb')
@@ -450,6 +502,7 @@ def main():
     try:
         vehicle_meta_data, fresh =myt.get_vehicle_meta_data()
         insert_into_mqtt(myt, "numberplate", json.dumps(vehicle_meta_data['raw_data']))
+        register_onto_mqtt(myt, vehicle_meta_data, "numberplate", "alias")
     except ValueError:
         print('Didn\'t get odometer information!')
 
@@ -465,6 +518,7 @@ def main():
             "moving" : parking['tripStatus'],
             "location": latest_address
             }))
+        register_onto_mqtt(myt, vehicle_meta_data, "location", "location")
         if parking['tripStatus'] == '0':
             print('Car is parked at {} at {}'.format(latest_address,
                                                      pendulum.from_timestamp(int(parking['event']['timestamp']) / 1000).
@@ -483,6 +537,8 @@ def main():
         odometer, odometer_unit, fuel_percent, fresh = myt.get_odometer_fuel()
         print('Odometer {} {}, {}% fuel left'.format(odometer, odometer_unit, fuel_percent))
         odometer_to_db(myt, fresh, fuel_percent, odometer)
+        register_onto_mqtt(myt, vehicle_meta_data, "odometer")
+        register_onto_mqtt(myt, vehicle_meta_data, "fuel_tank")
     except ValueError:
         print('Didn\'t get odometer information!')
 
