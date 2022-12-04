@@ -151,7 +151,7 @@ class Myt:
         """
         fresh = False
         trips_path = Path(CACHE_DIR) / 'trips'
-        trips_file = trips_path / 'trips-{}'.format(pendulum.now())
+        trips_file = trips_path / 'trips-{}.json'.format(pendulum.now())
         log.info('Fetching trips...')
         r = requests.get(
             'https://cpb2cs.toyota-europe.com/api/user/{}/cms/trips/v2/history/vin/{}/{}'.format(
@@ -178,6 +178,7 @@ class Myt:
         trip_base_path = Path(CACHE_DIR) / 'trips'
         trip_path = trip_base_path / trip_id[0:2] / trip_id[2:4]
         trip_file = trip_path / trip_id
+        trip_file = trip_file.with_suffix('.json')
         if not trip_file.exists():
             log.debug('Fetching trip...')
             r = requests.get('https://cpb2cs.toyota-europe.com/api/user/{}/cms/trips/v2/{}/events/vin/{}'.format(
@@ -202,7 +203,7 @@ class Myt:
         """
         fresh = False
         parking_path = Path(CACHE_DIR) / 'parking'
-        parking_file = parking_path / 'parking-{}'.format(pendulum.now())
+        parking_file = parking_path / 'parking-{}.json'.format(pendulum.now())
         token = self.user_data['token']
         uuid = self.user_data['customerProfile']['uuid']
         vin = self.config_data['vin']
@@ -226,7 +227,7 @@ class Myt:
         """
         fresh = False
         odometer_path = Path(CACHE_DIR) / 'odometer'
-        odometer_file = odometer_path / 'odometer-{}'.format(pendulum.now())
+        odometer_file = odometer_path / 'odometer-{}.json'.format(pendulum.now())
         token = self.user_data['token']
         vin = self.config_data['vin']
         uuid = self.user_data['customerProfile']['uuid']
@@ -296,7 +297,7 @@ class Myt:
         """
         fresh = False
         statistics_path = Path(CACHE_DIR) / 'statistics'
-        statistics_file = statistics_path / 'statistics-{}'.format(pendulum.now())
+        statistics_file = statistics_path / 'statistics-{}.json'.format(pendulum.now())
         token = self.user_data['token']
         uuid = self.user_data['customerProfile']['uuid']
         vin = self.config_data['vin']
