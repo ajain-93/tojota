@@ -24,6 +24,7 @@ import sys
 
 import pendulum
 import requests
+from paho.mqtt import client as mqtt
 
 logging.basicConfig(format='%(asctime)s:%(name)s:%(levelname)s: %(message)s')
 log = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ CACHE_DIR = 'cache'
 USER_DATA = 'user_data.json'
 VEHICLE_DATA = 'vehicle_data.json'
 INFLUXDB_URL = 'http://localhost:8086/write?db=tojota'
+MQTT_URL = 'localhost'
 
 
 class Myt:
@@ -370,6 +372,23 @@ def insert_into_influxdb(measurement, value):
     requests.post(INFLUXDB_URL, headers=headers, data=payload)
 
 
+def insert_into_mqtt(myt, measurement, value):
+    """
+    Insert data into influxdb (without authentication)
+    :param measurement: Measurement name
+    :param value: Measurement value
+    :return: null
+    """
+    vin = myt.config_data['vin']
+    # topic = f"toyota/{vin}" if measurement == "" else f"toyota/{vin}/{measurement}"
+    topic = f"toyota/{vin}/{measurement}"
+    mqttClient = mqtt.Client('python_tojota')
+    mqttClient.connect(MQTT_URL)
+    mqttClient.publish(topic, value, qos=1, retain=True)
+    mqttClient.disconnect()
+    return
+
+
 def remote_control_to_db(myt, fresh, charge_info, hvac_info):
     if fresh and myt.config_data['use_influxdb']:
         log.debug('Saving remote control data to influxdb')
@@ -393,6 +412,11 @@ def odometer_to_db(myt, fresh, fuel_percent, odometer):
         log.debug('Saving odometer data to influxdb')
         insert_into_influxdb('odometer', odometer)
         insert_into_influxdb('fuel_level', fuel_percent)
+
+    if myt.config_data['use_mqtt']:
+        log.debug('Saving odometer data to mqtt')
+        insert_into_mqtt(myt, 'odometer', odometer)
+        insert_into_mqtt(myt, 'fuel_tank', fuel_percent)
 
 
 def trip_data_to_db(myt, fresh, average_consumption, stats):
@@ -425,6 +449,7 @@ def main():
     log.info('Get vehicle metadata...')
     try:
         vehicle_meta_data, fresh =myt.get_vehicle_meta_data()
+        insert_into_mqtt(myt, "numberplate", json.dumps(vehicle_meta_data['raw_data']))
     except ValueError:
         print('Didn\'t get odometer information!')
 
@@ -433,6 +458,13 @@ def main():
     log.info('Get parking info...')
     try:
         parking, fresh = myt.get_parking()
+        insert_into_mqtt(myt, "location", json.dumps({
+            "latitude": parking['event']['lat'],
+            "longitude": parking['event']['lon'],
+            "source": "gps",
+            "moving" : parking['tripStatus'],
+            "location": latest_address
+            }))
         if parking['tripStatus'] == '0':
             print('Car is parked at {} at {}'.format(latest_address,
                                                      pendulum.from_timestamp(int(parking['event']['timestamp']) / 1000).
@@ -513,6 +545,7 @@ def main():
         kms += stats['totalDistanceInKm']
         ls += stats['fuelConsumptionInL']
         average_consumption = (stats['fuelConsumptionInL']/stats['totalDistanceInKm'])*100
+        insert_into_mqtt(myt, f"trips/{trip['tripId']}", json.dumps(trip | stats))
         trip_data_to_db(myt, fresh, average_consumption, stats)
         print('{} {} -> {} {}: {} km, {} km/h, {:.2f} l/100 km, {:.2f} l'.
               format(start_time, start_address, end_time, end_address, stats['totalDistanceInKm'],

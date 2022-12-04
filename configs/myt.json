@@ -4,5 +4,6 @@
   "vin": "JTMDW3FV50D123456",
   "timezone": "Europe/Helsinki",
   "use_remote_control": true,
+  "use_mqtt": true,
   "use_influxdb": false
 }
