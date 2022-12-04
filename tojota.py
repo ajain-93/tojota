@@ -399,22 +399,21 @@ def register_onto_mqtt(myt, vehicleMetaData, measurement, value_template=None):
     vin = myt.config_data['vin']
     topic = f"homeassistant/sensor/{vin}/{measurement}/config"
 
-    match measurement:
-        case "numberplate":
-            icon = "car"
-            unit_of_measurement = ""
-        case "odometer":
-            icon = "counter"
-            unit_of_measurement = "km"
-        case "fuel_tank":
-            icon = "gas-station"
-            unit_of_measurement = "%"
-        case "location":
-            icon = "map-marker"
-            unit_of_measurement = ""
-        case _:
-            icon = "car"
-            unit_of_measurement = ""
+    if measurement == "numberplate":
+        icon = "car"
+        unit_of_measurement = ""
+    elif measurement == "odometer":
+        icon = "counter"
+        unit_of_measurement = "km"
+    elif measurement == "fuel_tank":
+        icon = "gas-station"
+        unit_of_measurement = "%"
+    elif measurement == "location":
+        icon = "map-marker"
+        unit_of_measurement = ""
+    else:
+        icon = "car"
+        unit_of_measurement = ""
 
     data = {
         "device":{
