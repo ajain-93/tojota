@@ -1,0 +1,9 @@
+version: '3'
+services:
+  tojota:
+    container_name: tojota
+    build: .
+    environment:
+      - TZ=Europe/Stockholm
+    volumes:
+      - ./:/opt/
