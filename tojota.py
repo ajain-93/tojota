@@ -40,7 +40,7 @@ CACHE_DIR = 'cache'
 USER_DATA = 'user_data.json'
 VEHICLE_DATA = 'vehicle_data.json'
 INFLUXDB_URL = 'http://localhost:8086/write?db=tojota'
-MQTT_URL = 'mqtt.jain.lan'
+MQTT_URL = 'jain10.jain.lan'
 
 
 class Myt:
@@ -363,6 +363,47 @@ class Myt:
         return data, fresh
 
 
+    def get_driving_statistics_preset(self, interval="week"):
+        """
+        Get driving statistics information. Save data to
+        CACHE_DIR/statistics/{type}/`datetime` file.
+
+        :return: statistics dict, fresh Boolean if new data was fetched
+        """
+        if interval != "week" and interval != "month" and interval != "year" :
+            raise ValueError('Incorrect interval:{}, requirement one of "week", "month", or "year".'.format(interval))
+
+        statistics_path = Path(CACHE_DIR) / 'statistics' / interval
+        statistics_file = statistics_path / 'statistics-{}.json'.format(pendulum.now())
+
+        url = 'https://cpb2cs.toyota-europe.com/api/user/{}/cms/trips/v2/summary/vin/{}/period/{}'.format(
+                self.user_data['customerProfile']['uuid'],
+                self.config_data['vin'],
+                interval
+                )
+
+        r = requests.get(url, headers=self.headers)
+        if r.status_code != 200:
+            raise ValueError('Failed to get data {} {} {}'.format(r.text, r.status_code, r.headers))
+
+        data = {"interval": interval} | r.json()['results']
+        data.pop('histogram')
+
+        os.makedirs(statistics_path, exist_ok=True)
+
+        try:
+            previous_statistics = json.loads(self._read_file(self._find_latest_file(str(
+                statistics_path / 'statistics*'))))
+        except TypeError:
+            previous_statistics = None
+
+        if data != previous_statistics:
+            self._write_file(statistics_file, json.dumps(r.json(), sort_keys=True))
+            fresh = True
+
+        return data, fresh
+
+
 def insert_into_influxdb(measurement, value):
     """
     Insert data into influxdb (without authentication)
@@ -414,6 +455,11 @@ def register_onto_mqtt(myt, vehicleMetaData, measurement, value_template=None):
     elif measurement == "location":
         icon = "map-marker"
         unit_of_measurement = ""
+    elif measurement in ["current_week_statistics",
+                        "current_month_statistics",
+                        "current_year_statistics"]:
+        icon = "map-marker-distance"
+        unit_of_measurement = "km"
     else:
         icon = "car"
         unit_of_measurement = ""
@@ -507,6 +553,24 @@ def main():
         register_onto_mqtt(myt, vehicle_meta_data, "numberplate", "alias")
     except ValueError:
         print('Didn\'t get odometer information!')
+
+    # Get vehicle driving statistics
+    log.info('Get vehicle driving statistics...')
+    try:
+        statistics_weekly, fresh =myt.get_driving_statistics_preset("week")
+        insert_into_mqtt(myt, "current_week_statistics", json.dumps(statistics_weekly))
+        register_onto_mqtt(myt, vehicle_meta_data, "current_week_statistics", "summary.totalDistanceInKm | round(1)")
+
+        statistics_monthly, fresh =myt.get_driving_statistics_preset("month")
+        insert_into_mqtt(myt, "current_month_statistics", json.dumps(statistics_monthly))
+        register_onto_mqtt(myt, vehicle_meta_data, "current_month_statistics", "summary.totalDistanceInKm | round(1)")
+
+        statistics_yearly, fresh =myt.get_driving_statistics_preset("year")
+        insert_into_mqtt(myt, "current_year_statistics", json.dumps(statistics_yearly))
+        register_onto_mqtt(myt, vehicle_meta_data, "current_year_statistics", "summary.totalDistanceInKm | round(1)")
+    except ValueError:
+        print('Didn\'t get statistics!')
+
 
     # Check is vehicle is still parked or moving and print corresponding information. Parking timestamp is epoch
     # timestamp with microseconds. Actual value seems to be at second precision level.
