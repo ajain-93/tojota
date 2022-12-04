@@ -40,7 +40,7 @@ CACHE_DIR = 'cache'
 USER_DATA = 'user_data.json'
 VEHICLE_DATA = 'vehicle_data.json'
 INFLUXDB_URL = 'http://localhost:8086/write?db=tojota'
-MQTT_URL = 'localhost'
+MQTT_URL = 'mqtt.jain.lan'
 
 
 class Myt:
