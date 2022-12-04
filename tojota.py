@@ -34,6 +34,7 @@ APP_VERSION = '4.10.0'
 
 CACHE_DIR = 'cache'
 USER_DATA = 'user_data.json'
+VEHICLE_DATA = 'vehicle_data.json'
 INFLUXDB_URL = 'http://localhost:8086/write?db=tojota'
 
 
@@ -219,6 +220,39 @@ class Myt:
             fresh = True
         return r.json(), fresh
 
+    def get_vehicle_meta_data(self):
+        """
+        Get veicle and fuel tank information.
+        CACHE_DIR/VEHICLE_DATA file.
+        :return: list(vhicleData), fresh
+        """
+        fresh = False
+        vehicle_data_path = Path(CACHE_DIR) / VEHICLE_DATA
+
+        url = 'https://cpb2cs.toyota-europe.com/vehicle/user/{}/vehicles?services=uio&legacy=true'.format(
+            self.user_data['customerProfile']['uuid'])
+        r = requests.get(url, headers=self.headers)
+        if r.status_code != 200:
+            raise ValueError('Failed to get data {} {} {}'.format(r.text, r.status_code, r.headers))
+
+        data = r.json()
+        for vehicle in data:
+            if vehicle['vin'] == self.config_data['vin']:
+                vehicle_meta_data = {
+                    "licensePlate": vehicle['licensePlate'],
+                    "modelName": vehicle['modelName'],
+                    "transmission":  vehicle['transmissionType'],
+                    "hybrid": vehicle['hybrid'],
+                    "raw_data": vehicle
+                    }
+
+        previous_vehicle_data = self._read_file(vehicle_data_path)
+        if r.text != previous_vehicle_data:
+            self._write_file(vehicle_data_path, r.text)
+            fresh = True
+
+        return vehicle_meta_data, fresh
+
     def get_odometer_fuel(self):
         """
         Get mileage and fuel tank information. Data is saved when vehicle is powered off. Save data to
@@ -386,6 +420,13 @@ def main():
         latest_address = trips['recentTrips'][0]['endAddress']
     except (KeyError, IndexError):
         latest_address = 'Unknown address'
+
+    # Get vehicle MetaData
+    log.info('Get vehicle metadata...')
+    try:
+        vehicle_meta_data, fresh =myt.get_vehicle_meta_data()
+    except ValueError:
+        print('Didn\'t get odometer information!')
 
     # Check is vehicle is still parked or moving and print corresponding information. Parking timestamp is epoch
     # timestamp with microseconds. Actual value seems to be at second precision level.
